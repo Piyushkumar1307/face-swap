@@ -7,9 +7,19 @@ cd "$ROOT"
 
 pip install -r requirements.txt
 
-if [[ ! -d facefusion ]]; then
+install_facefusion() {
   echo "Cloning FaceFusion..."
+  rm -rf facefusion
   git clone --depth 1 https://github.com/facefusion/facefusion.git facefusion
+}
+
+if [[ ! -f facefusion/facefusion.py ]] || [[ ! -f facefusion/requirements.txt ]]; then
+  install_facefusion
+fi
+
+if [[ ! -f facefusion/requirements.txt ]]; then
+  echo "ERROR: FaceFusion clone failed — requirements.txt missing"
+  exit 1
 fi
 
 pip install -r facefusion/requirements.txt "onnxruntime==1.24.4" imageio-ffmpeg

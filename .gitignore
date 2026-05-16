@@ -1,5 +1,6 @@
 backend/venv/
 backend/venv-ff/
+backend/facefusion/
 backend/facefusion_jobs/
 backend/facefusion_work/
 backend/uploads/
