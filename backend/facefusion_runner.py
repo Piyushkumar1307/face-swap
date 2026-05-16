@@ -116,7 +116,9 @@ def _facefusion_python() -> str:
         path = Path(env).expanduser()
         if not path.is_absolute():
             path = BACKEND_DIR / path
-        return str(path.resolve())
+        path = path.resolve()
+        if path.is_file():
+            return str(path)
     venv_ff = BACKEND_DIR / "venv-ff" / "bin" / "python"
     if venv_ff.is_file():
         return str(venv_ff)

@@ -6,6 +6,7 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from cloudinary_service import (
@@ -203,10 +204,29 @@ async def swap_face(
 
 
 def _mount_frontend() -> None:
-    if not STATIC_DIR.is_dir() or not (STATIC_DIR / "index.html").is_file():
+    index = STATIC_DIR / "index.html"
+    if not index.is_file():
         print("No frontend build in static/ — API only (run scripts/build_frontend.sh).")
         return
-    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")
+
+    assets_dir = STATIC_DIR / "assets"
+    if assets_dir.is_dir():
+        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    async def spa_index():
+        return FileResponse(index)
+
+    @app.get("/{spa_path:path}", include_in_schema=False)
+    async def spa_fallback(spa_path: str):
+        # API routes are registered above; this only serves static files + SPA fallback.
+        if spa_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="Not Found")
+        file_path = STATIC_DIR / spa_path
+        if file_path.is_file():
+            return FileResponse(file_path)
+        return FileResponse(index)
+
     print(f"Serving UI from {STATIC_DIR}")
 
 

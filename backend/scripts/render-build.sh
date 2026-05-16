@@ -69,4 +69,11 @@ if [[ ! -f "$SWAP_ONNX" ]]; then
 fi
 
 echo "[build] Model files verified on disk."
+
+if [[ ! -f static/index.html ]]; then
+  echo "ERROR: frontend missing — build.sh must run scripts/build_frontend.sh first." >&2
+  exit 1
+fi
+echo "[build] Frontend static bundle present."
+
 _log "H1" "render-build finished"
