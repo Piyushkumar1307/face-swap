@@ -1,5 +1,6 @@
 # https://render.com/docs/blueprint-spec
-# Or set manually: Build = bash build.sh | Start = bash start.sh | PYTHON_VERSION = 3.11.9
+# Single web service: API + React UI (build.sh builds frontend into backend/static).
+# Manual: Build = bash build.sh | Start = bash start.sh | PYTHON_VERSION = 3.11.9
 services:
   - type: web
     name: face-swap-api

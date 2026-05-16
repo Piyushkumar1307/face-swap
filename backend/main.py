@@ -1,8 +1,12 @@
+import threading
+from pathlib import Path
+
 import certifi
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from cloudinary_service import (
     delete_template,
@@ -11,10 +15,20 @@ from cloudinary_service import (
     upload_result_bytes,
     upload_template,
 )
-from facefusion_runner import is_facefusion_ready, perform_swap
+from facefusion_runner import (
+    ensure_swap_models_downloaded,
+    is_facefusion_ready,
+    models_download_in_progress,
+    perform_swap,
+    readiness_status,
+    swap_models_installed,
+)
 from image_utils import bytes_to_bgr, bgr_to_jpeg_bytes
 
 load_dotenv()
+
+BACKEND_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BACKEND_DIR / "static"
 
 app = FastAPI(title="Face Swap API (FaceFusion)")
 
@@ -27,14 +41,30 @@ app.add_middleware(
 )
 
 
+def _bootstrap_models() -> None:
+    if swap_models_installed():
+        print("FaceFusion models present.")
+        return
+    print("FaceFusion models missing — downloading in background (API stays up)...")
+    if ensure_swap_models_downloaded():
+        print("FaceFusion models ready.")
+    else:
+        print("WARNING: FaceFusion model download failed or incomplete.")
+
+
 @app.on_event("startup")
 def check_facefusion():
+    status = readiness_status()
     if is_facefusion_ready():
         print("FaceFusion ready.")
-    else:
-        print(
-            "WARNING: FaceFusion is not ready. Run: bash scripts/setup_facefusion.sh"
-        )
+        return
+    if not status["script"]:
+        print("WARNING: FaceFusion is not installed. Run: bash scripts/setup_facefusion.sh")
+        return
+    if not status["models"]:
+        threading.Thread(target=_bootstrap_models, daemon=True).start()
+        return
+    print("WARNING: FaceFusion is not ready (check ffmpeg / python).")
 
 
 async def load_image_from_url(url: str):
@@ -57,7 +87,18 @@ async def load_image_from_url(url: str):
 
 
 def run_swap(source_img, target_img):
+    if models_download_in_progress():
+        raise HTTPException(
+            status_code=503,
+            detail="FaceFusion models are downloading. Retry in a few minutes.",
+        )
     if not is_facefusion_ready():
+        status = readiness_status()
+        if not status["models"]:
+            raise HTTPException(
+                status_code=503,
+                detail="FaceFusion models are not installed yet. Wait for download to finish.",
+            )
         raise HTTPException(
             status_code=503,
             detail=(
@@ -73,12 +114,15 @@ def run_swap(source_img, target_img):
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
-@app.get("/")
-def home():
+@app.get("/api/health")
+def api_health():
+    status = readiness_status()
     return {
         "message": "Face Swap API Running (FaceFusion)",
         "cloudinary": is_configured(),
         "facefusion": is_facefusion_ready(),
+        "models_downloading": models_download_in_progress(),
+        "models_installed": bool(status["models"]),
         "storage": "cloudinary",
     }
 
@@ -156,3 +200,14 @@ async def swap_face(
         "height": uploaded.get("height"),
         "id": uploaded.get("id"),
     }
+
+
+def _mount_frontend() -> None:
+    if not STATIC_DIR.is_dir() or not (STATIC_DIR / "index.html").is_file():
+        print("No frontend build in static/ — API only (run scripts/build_frontend.sh).")
+        return
+    app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="frontend")
+    print(f"Serving UI from {STATIC_DIR}")
+
+
+_mount_frontend()

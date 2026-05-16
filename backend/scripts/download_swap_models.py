@@ -137,10 +137,9 @@ def main() -> int:
         print(f"ERROR: failed downloading enhancer {ENHANCER_MODEL}", file=sys.stderr)
         return 1
 
-    required_files = [
-        FACEFUSION_DIR / ".assets/models/hyperswap_1a_256.onnx",
-        FACEFUSION_DIR / ".assets/models/gfpgan_1.4.onnx",
-    ]
+    required_files = [FACEFUSION_DIR / ".assets/models" / f"{SWAP_MODEL}.onnx"]
+    if "face_enhancer" in os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split():
+        required_files.append(FACEFUSION_DIR / ".assets/models" / f"{ENHANCER_MODEL}.onnx")
     missing = [str(p) for p in required_files if not p.is_file()]
     if missing:
         _log("H7", "required model files missing after download", {"missing": missing})

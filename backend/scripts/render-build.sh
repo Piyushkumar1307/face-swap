@@ -61,9 +61,10 @@ _log "H1" "starting selective model download"
 echo "Downloading swap-only FaceFusion models (~2-4GB, not full force-download)..."
 python scripts/download_swap_models.py
 
-if [[ ! -f facefusion/.assets/models/hyperswap_1a_256.onnx ]]; then
-  echo "ERROR: hyperswap model missing after download" >&2
-  _log "H7" "hyperswap model file missing"
+SWAP_ONNX="facefusion/.assets/models/${FACEFUSION_SWAP_MODEL:-hyperswap_1a_256}.onnx"
+if [[ ! -f "$SWAP_ONNX" ]]; then
+  echo "ERROR: swap model missing after download: $SWAP_ONNX" >&2
+  _log "H7" "swap model file missing" 
   exit 1
 fi
 

@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import shutil
 import subprocess
 import sys
+import threading
+import time
 import uuid
 from pathlib import Path
 
@@ -19,6 +22,68 @@ FACEFUSION_SCRIPT = FACEFUSION_DIR / "facefusion.py"
 JOBS_DIR = BACKEND_DIR / "facefusion_jobs"
 WORK_ROOT = BACKEND_DIR / "facefusion_work"
 FFMPEG_BIN_DIR = BACKEND_DIR / "bin"
+DEBUG_LOG = BACKEND_DIR.parent / ".cursor" / "debug-d365c7.log"
+DEBUG_SESSION = "d365c7"
+
+_models_download_lock = threading.Lock()
+_models_downloading = False
+
+
+def _swap_model_name() -> str:
+    return os.environ.get("FACEFUSION_SWAP_MODEL", "hyperswap_1a_256")
+
+
+def _enhancer_model_name() -> str:
+    return os.environ.get("FACEFUSION_ENHANCER_MODEL", "gfpgan_1.4")
+
+
+def required_model_paths() -> list[Path]:
+    models_dir = FACEFUSION_DIR / ".assets" / "models"
+    paths = [models_dir / f"{_swap_model_name()}.onnx"]
+    processors = os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split()
+    if "face_enhancer" in processors:
+        paths.append(models_dir / f"{_enhancer_model_name()}.onnx")
+    return paths
+
+
+def swap_models_installed() -> bool:
+    return all(path.is_file() and path.stat().st_size > 0 for path in required_model_paths())
+
+
+# region agent log
+def _debug_log(hypothesis_id: str, message: str, data: dict | None = None) -> None:
+    try:
+        payload = {
+            "sessionId": DEBUG_SESSION,
+            "hypothesisId": hypothesis_id,
+            "location": "facefusion_runner.py",
+            "message": message,
+            "data": data or {},
+            "timestamp": int(time.time() * 1000),
+        }
+        DEBUG_LOG.parent.mkdir(parents=True, exist_ok=True)
+        with DEBUG_LOG.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(payload) + "\n")
+    except OSError:
+        pass
+
+
+# endregion
+
+
+def readiness_status() -> dict[str, bool | list[str]]:
+    """Cheap checks used by / and startup (no subprocess --version)."""
+    python_bin = Path(_facefusion_python())
+    env = _ffmpeg_env()
+    ffmpeg_ok = shutil.which("ffmpeg", path=env.get("PATH")) is not None
+    missing_models = [str(p) for p in required_model_paths() if not p.is_file()]
+    return {
+        "script": FACEFUSION_SCRIPT.is_file(),
+        "python": python_bin.is_file(),
+        "ffmpeg": ffmpeg_ok,
+        "models": len(missing_models) == 0,
+        "missing_models": missing_models,
+    }
 
 
 def _bundled_ffmpeg_dir() -> str | None:
@@ -59,26 +124,57 @@ def _facefusion_python() -> str:
 
 
 def is_facefusion_ready() -> bool:
-    if not FACEFUSION_SCRIPT.is_file():
-        return False
-    python_bin = Path(_facefusion_python())
-    if not python_bin.is_file():
-        return False
-    env = _ffmpeg_env()
-    if shutil.which("ffmpeg", path=env.get("PATH")) is None:
-        return False
-    try:
-        proc = subprocess.run(
-            [str(python_bin), str(FACEFUSION_SCRIPT), "--version"],
-            capture_output=True,
-            text=True,
-            cwd=FACEFUSION_DIR,
-            env=env,
-            timeout=120,
-        )
-        return proc.returncode == 0
-    except (OSError, subprocess.TimeoutExpired):
-        return False
+    status = readiness_status()
+    ready = all(
+        status[key]
+        for key in ("script", "python", "ffmpeg", "models")
+    )
+    # region agent log
+    if not ready:
+        _debug_log("H8", "facefusion not ready", {"status": status})
+    # endregion
+    return ready
+
+
+def models_download_in_progress() -> bool:
+    return _models_downloading
+
+
+def ensure_swap_models_downloaded() -> bool:
+    """Download swap models if missing. Returns True when models are on disk."""
+    global _models_downloading
+    if swap_models_installed():
+        return True
+
+    with _models_download_lock:
+        if swap_models_installed():
+            return True
+        _models_downloading = True
+        # region agent log
+        _debug_log("H9", "starting background model download", {"missing": readiness_status().get("missing_models")})
+        # endregion
+        try:
+            script = BACKEND_DIR / "scripts" / "download_swap_models.py"
+            proc = subprocess.run(
+                [sys.executable, str(script)],
+                cwd=BACKEND_DIR,
+                env=_ffmpeg_env(),
+                timeout=int(os.environ.get("FACEFUSION_DOWNLOAD_TIMEOUT_SEC", "3600")),
+            )
+            ok = proc.returncode == 0 and swap_models_installed()
+            # region agent log
+            _debug_log(
+                "H9",
+                "model download finished",
+                {"ok": ok, "returncode": proc.returncode, "installed": swap_models_installed()},
+            )
+            # endregion
+            return ok
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            _debug_log("H9", "model download failed", {"error": type(exc).__name__})
+            return False
+        finally:
+            _models_downloading = False
 
 
 def _require_ffmpeg() -> None:
@@ -173,7 +269,12 @@ def _parse_stderr(proc: subprocess.CompletedProcess) -> str:
 def perform_swap(source_bgr: np.ndarray, target_bgr: np.ndarray) -> np.ndarray:
     """Swap source identity onto target using FaceFusion."""
     _require_ffmpeg()
-    if not FACEFUSION_SCRIPT.is_file():
+    if not is_facefusion_ready():
+        status = readiness_status()
+        if not status["models"]:
+            raise RuntimeError(
+                "FaceFusion models are still downloading. Retry in a few minutes."
+            )
         raise RuntimeError(
             "FaceFusion is not installed. Run: bash backend/scripts/setup_facefusion.sh"
         )

@@ -1,6 +1,9 @@
 import axios from 'axios'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000'
+// Production: same-origin API. Dev: defaults to local backend unless VITE_API_URL is set.
+const API_URL = import.meta.env.PROD
+  ? (import.meta.env.VITE_API_URL || '')
+  : (import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000')
 
 export const api = axios.create({ baseURL: API_URL })
 
@@ -31,6 +34,6 @@ export async function swapFace(sourceFile, targetUrl) {
 }
 
 export async function checkHealth() {
-  const { data } = await api.get('/')
+  const { data } = await api.get('/api/health')
   return data
 }
