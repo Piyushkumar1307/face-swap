@@ -1,0 +1,13 @@
+backend/venv/
+backend/venv-ff/
+backend/facefusion_jobs/
+backend/facefusion_work/
+backend/uploads/
+backend/outputs/
+backend/facefusion_work/
+backend/facefusion_jobs/
+backend/.env
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+.DS_Store

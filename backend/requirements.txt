@@ -1,0 +1,10 @@
+fastapi
+uvicorn
+python-multipart
+opencv-python
+numpy
+pillow
+cloudinary
+python-dotenv
+httpx
+certifi
