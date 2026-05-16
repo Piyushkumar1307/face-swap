@@ -137,8 +137,18 @@ def main() -> int:
         print(f"ERROR: failed downloading enhancer {ENHANCER_MODEL}", file=sys.stderr)
         return 1
 
+    required_files = [
+        FACEFUSION_DIR / ".assets/models/hyperswap_1a_256.onnx",
+        FACEFUSION_DIR / ".assets/models/gfpgan_1.4.onnx",
+    ]
+    missing = [str(p) for p in required_files if not p.is_file()]
+    if missing:
+        _log("H7", "required model files missing after download", {"missing": missing})
+        print(f"ERROR: missing model files: {missing}", file=sys.stderr)
+        return 1
+
     # region agent log
-    _log("H1", "selective download complete", {})
+    _log("H1", "selective download complete", {"verified": [p.name for p in required_files]})
     # endregion
     print("[build] Swap models downloaded successfully.")
     return 0

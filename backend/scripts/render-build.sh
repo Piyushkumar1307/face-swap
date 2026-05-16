@@ -60,4 +60,12 @@ fi
 _log "H1" "starting selective model download"
 echo "Downloading swap-only FaceFusion models (~2-4GB, not full force-download)..."
 python scripts/download_swap_models.py
+
+if [[ ! -f facefusion/.assets/models/hyperswap_1a_256.onnx ]]; then
+  echo "ERROR: hyperswap model missing after download" >&2
+  _log "H7" "hyperswap model file missing"
+  exit 1
+fi
+
+echo "[build] Model files verified on disk."
 _log "H1" "render-build finished"
