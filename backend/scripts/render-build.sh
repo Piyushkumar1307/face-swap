@@ -43,9 +43,10 @@ fi
 _log "H2" "facefusion present"
 
 pip install -r facefusion/requirements.txt "onnxruntime==1.24.4" imageio-ffmpeg
-# Headless OpenCV for Linux servers (provides cv2; avoids missing GUI libs on Render).
-pip install "opencv-python-headless==4.10.0.84"
+# FaceFusion pulls opencv-python; force headless so cv2 works on Linux (no libGL).
+pip install "opencv-python-headless==4.10.0.84" --force-reinstall --no-deps
 python -c "import cv2; print('opencv', cv2.__version__)"
+python -c "import facefusion; print('facefusion import ok')"
 
 mkdir -p bin
 FF_EXE="$(python -c "import imageio_ffmpeg; print(imageio_ffmpeg.get_ffmpeg_exe())")"

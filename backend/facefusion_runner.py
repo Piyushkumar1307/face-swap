@@ -115,18 +115,52 @@ def _ffmpeg_env() -> dict[str, str]:
     return env
 
 
+def _python_imports_cv2(python_bin: str) -> bool:
+    try:
+        proc = subprocess.run(
+            [python_bin, "-c", "import cv2"],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        return proc.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
 def _facefusion_python() -> str:
+    """Use an interpreter that has cv2 + FaceFusion deps (same venv as the API on Render)."""
+    candidates: list[Path] = []
+
+    if os.environ.get("RENDER"):
+        candidates.append(Path(sys.executable))
+
     env = os.environ.get("FACEFUSION_PYTHON", "").strip()
-    if env:
+    if env and env not in ("python", "python3"):
         path = Path(env).expanduser()
         if not path.is_absolute():
             path = BACKEND_DIR / path
-        path = path.resolve()
-        if path.is_file():
-            return str(path)
+        candidates.append(path.resolve())
+
+    venv_render = BACKEND_DIR.parent / ".venv" / "bin" / "python"
+    if venv_render.is_file():
+        candidates.append(venv_render)
+
     venv_ff = BACKEND_DIR / "venv-ff" / "bin" / "python"
     if venv_ff.is_file():
-        return str(venv_ff)
+        candidates.append(venv_ff)
+
+    candidates.append(Path(sys.executable))
+
+    seen: set[str] = set()
+    for path in candidates:
+        py = str(path)
+        if py in seen or not path.is_file():
+            continue
+        seen.add(py)
+        if _python_imports_cv2(py):
+            return py
+
     return sys.executable
 
 
