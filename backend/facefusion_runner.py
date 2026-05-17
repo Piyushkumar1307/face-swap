@@ -107,6 +107,7 @@ def _ffmpeg_env() -> dict[str, str]:
     extra = _bundled_ffmpeg_dir()
     if extra:
         env["PATH"] = extra + os.pathsep + env.get("PATH", "")
+    env["FACEFUSION_PYTHON"] = _facefusion_python()
     return env
 
 
@@ -199,6 +200,8 @@ def _build_swap_command(source_path: Path, target_path: Path, output_path: Path,
 
     execution_providers = os.environ.get("FACEFUSION_EXECUTION_PROVIDERS", "").split()
     execution_providers = [p for p in execution_providers if p]
+    if not execution_providers:
+        execution_providers = ["cpu"]
 
     cmd = [
         _facefusion_python(),
@@ -311,7 +314,17 @@ def perform_swap(source_bgr: np.ndarray, target_bgr: np.ndarray) -> np.ndarray:
         )
 
         if proc.returncode != 0:
+            if proc.returncode in (-9, 137):
+                raise RuntimeError(
+                    "Swap ran out of memory on the server. Try a smaller photo or upgrade "
+                    "your Render instance (Standard plan recommended)."
+                )
             detail = _parse_stderr(proc)
+            if proc.returncode != 0 and detail == "FaceFusion failed with no error output.":
+                detail = (
+                    f"FaceFusion exited with code {proc.returncode}. "
+                    "Check server logs or try a smaller image."
+                )
             if re.search(r"no face", detail, re.I):
                 raise ValueError(
                     "No face detected. Use a clear front-facing photo and a template with a visible face."

@@ -1,4 +1,6 @@
+import os
 import threading
+import traceback
 from pathlib import Path
 
 import certifi
@@ -24,7 +26,7 @@ from facefusion_runner import (
     readiness_status,
     swap_models_installed,
 )
-from image_utils import bytes_to_bgr, bgr_to_jpeg_bytes
+from image_utils import bytes_to_bgr, bgr_to_jpeg_bytes, limit_image_size
 
 load_dotenv()
 
@@ -186,14 +188,23 @@ async def swap_face(
         raise HTTPException(status_code=400, detail="Invalid source image")
 
     target_img = await load_image_from_url(target_url)
-    result = run_swap(source_img, target_img)
+
+    max_edge = int(os.environ.get("SWAP_MAX_EDGE", "1280"))
+    source_img = limit_image_size(source_img, max_edge)
+    target_img = limit_image_size(target_img, max_edge)
 
     try:
+        result = run_swap(source_img, target_img)
         uploaded = upload_result_bytes(bgr_to_jpeg_bytes(result))
+    except HTTPException:
+        raise
     except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {exc}") from exc
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
     return {
         "url": uploaded["url"],

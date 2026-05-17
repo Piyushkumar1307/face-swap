@@ -14,6 +14,12 @@ services:
         value: python
       - key: WEB_CONCURRENCY
         value: "1"
+      - key: FACEFUSION_EXECUTION_PROVIDERS
+        value: cpu
+      - key: FACEFUSION_PIXEL_BOOST
+        value: 256x256
+      - key: SWAP_MAX_EDGE
+        value: "1280"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY

@@ -25,6 +25,20 @@ def bytes_to_bgr(data: bytes) -> np.ndarray | None:
         return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 
+def limit_image_size(image_bgr: np.ndarray, max_edge: int = 1280) -> np.ndarray:
+    """Downscale large photos before swap to reduce RAM use on small servers."""
+    if image_bgr is None or image_bgr.size == 0:
+        return image_bgr
+    h, w = image_bgr.shape[:2]
+    longest = max(h, w)
+    if longest <= max_edge:
+        return image_bgr
+    scale = max_edge / longest
+    new_w = max(1, int(w * scale))
+    new_h = max(1, int(h * scale))
+    return cv2.resize(image_bgr, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+
 def bgr_to_jpeg_bytes(image_bgr: np.ndarray, quality: int = 95) -> bytes:
     ok, encoded = cv2.imencode(".jpg", image_bgr, [cv2.IMWRITE_JPEG_QUALITY, quality])
     if not ok:
