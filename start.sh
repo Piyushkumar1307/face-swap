@@ -28,9 +28,16 @@ resolve_python() {
 }
 
 REQUESTED="${FACEFUSION_PYTHON:-python}"
-PYTHON_BIN="$(resolve_python "$REQUESTED")"
-if [[ "$REQUESTED" != "$PYTHON_BIN" ]] && [[ "$REQUESTED" != "python" ]]; then
-  echo "[start] FACEFUSION_PYTHON=$REQUESTED not found — using $PYTHON_BIN"
+# Render installs deps into the service venv at repo root (../.venv from backend/).
+if [[ -x "$ROOT/../.venv/bin/python" ]]; then
+  PYTHON_BIN="$ROOT/../.venv/bin/python"
+elif [[ "$REQUESTED" != "python" ]]; then
+  PYTHON_BIN="$(resolve_python "$REQUESTED")"
+  if [[ "$REQUESTED" != "$PYTHON_BIN" ]]; then
+    echo "[start] FACEFUSION_PYTHON=$REQUESTED not found — using $PYTHON_BIN"
+  fi
+else
+  PYTHON_BIN="$(resolve_python python)"
 fi
 export FACEFUSION_PYTHON="$PYTHON_BIN"
 
