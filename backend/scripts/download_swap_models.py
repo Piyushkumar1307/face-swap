@@ -48,6 +48,41 @@ def _log(hypothesis_id: str, message: str, data: dict | None = None) -> None:
 # endregion
 
 
+def _onnx_paths(model: dict) -> list[Path]:
+    paths: list[Path] = []
+    for source in model.get("sources", {}).values():
+        rel = source.get("path", "")
+        if rel.endswith(".onnx"):
+            paths.append((FACEFUSION_DIR / rel).resolve())
+    return paths
+
+
+def _min_bytes_for(path: Path) -> int:
+    name = path.name
+    if name.startswith("xseg"):
+        return 1_000_000
+    if name.startswith("bisenet"):
+        return 1_000_000
+    if name.startswith("inswapper") or name.startswith("hyperswap"):
+        return 50_000_000
+    if name.startswith("gfpgan"):
+        return 50_000_000
+    return 10_000
+
+
+def _files_valid(paths: list[Path]) -> bool:
+    for path in paths:
+        if not path.is_file():
+            return False
+        if path.stat().st_size < _min_bytes_for(path):
+            print(f"[build] corrupt/incomplete model file ({path.stat().st_size} bytes): {path.name}", file=sys.stderr)
+            path.unlink(missing_ok=True)
+            for sibling in path.parent.glob(path.stem + ".*"):
+                sibling.unlink(missing_ok=True)
+            return False
+    return True
+
+
 def _download_model_entry(model: dict) -> bool:
     from facefusion.download import conditional_download_hashes, conditional_download_sources
 
@@ -60,13 +95,22 @@ def _download_model_entry(model: dict) -> bool:
     )
 
 
+def _download_model_entry_with_retry(model: dict, label: str, retries: int = 5) -> bool:
+    for attempt in range(1, retries + 1):
+        if _download_model_entry(model) and _files_valid(_onnx_paths(model)):
+            return True
+        print(f"[build] retry {label} ({attempt}/{retries})", file=sys.stderr)
+        time.sleep(min(attempt * 3, 15))
+    return False
+
+
 def _download_model_set(model_set: dict, only_keys: set[str] | None = None) -> bool:
     for key, model in model_set.items():
         if key == "__metadata__" or not isinstance(model, dict):
             continue
         if only_keys is not None and key not in only_keys:
             continue
-        if not _download_model_entry(model):
+        if not _download_model_entry_with_retry(model, key):
             return False
     return True
 
@@ -80,7 +124,8 @@ def main() -> int:
     os.chdir(FACEFUSION_DIR)
     sys.path.insert(0, str(FACEFUSION_DIR))
 
-    print(f"[build] Selective download: swap={SWAP_MODEL} enhancer={ENHANCER_MODEL}")
+    processors = os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split()
+    print(f"[build] Selective download: swap={SWAP_MODEL} processors={processors}")
     # region agent log
     _log("H1", "start selective download", {"swap": SWAP_MODEL, "enhancer": ENHANCER_MODEL})
     # endregion
@@ -90,7 +135,7 @@ def main() -> int:
     from facefusion.processors.modules.face_enhancer import core as face_enhancer_core
     from facefusion.processors.modules.face_swapper import core as face_swapper_core
 
-    state_manager.init_item("download_providers", ["github", "huggingface"])
+    state_manager.init_item("download_providers", ["huggingface", "github"])
     state_manager.init_item("download_scope", "lite")
     state_manager.init_item("log_level", "info")
 
