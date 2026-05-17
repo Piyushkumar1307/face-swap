@@ -192,6 +192,9 @@ async def swap_face(
     max_edge = int(os.environ.get("SWAP_MAX_EDGE", "1280"))
     source_img = limit_image_size(source_img, max_edge)
     target_img = limit_image_size(target_img, max_edge)
+    sh, sw = source_img.shape[:2]
+    th, tw = target_img.shape[:2]
+    print(f"[swap-face] source={sw}x{sh} target={tw}x{th}", flush=True)
 
     try:
         result = run_swap(source_img, target_img)

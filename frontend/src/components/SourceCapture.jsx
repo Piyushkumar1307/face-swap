@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { compressImageFile } from '../imageUtils'
 
 export default function SourceCapture({ sourcePreview, onSourceReady, onClear }) {
   const [mode, setMode] = useState('file')
@@ -52,22 +53,32 @@ export default function SourceCapture({ sourcePreview, onSourceReady, onClear })
     canvas.getContext('2d').drawImage(video, 0, 0)
 
     canvas.toBlob(
-      (blob) => {
+      async (blob) => {
         if (!blob) return
-        const file = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' })
-        onSourceReady(file, canvas.toDataURL('image/jpeg', 0.92))
-        stopCamera()
+        try {
+          const raw = new File([blob], `capture-${Date.now()}.jpg`, { type: 'image/jpeg' })
+          const file = await compressImageFile(raw)
+          onSourceReady(file, URL.createObjectURL(file))
+          stopCamera()
+        } catch {
+          alert('Could not process photo')
+        }
       },
       'image/jpeg',
       0.92
     )
   }
 
-  const handleFile = (e) => {
+  const handleFile = async (e) => {
     const file = e.target.files?.[0]
     if (!file) return
-    onSourceReady(file, URL.createObjectURL(file))
     e.target.value = ''
+    try {
+      const compressed = await compressImageFile(file)
+      onSourceReady(compressed, URL.createObjectURL(compressed))
+    } catch {
+      alert('Could not read image file')
+    }
   }
 
   return (

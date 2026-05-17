@@ -40,7 +40,9 @@ def _enhancer_model_name() -> str:
 def required_model_paths() -> list[Path]:
     models_dir = FACEFUSION_DIR / ".assets" / "models"
     paths = [models_dir / f"{_swap_model_name()}.onnx"]
-    processors = os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split()
+    processors = [
+        p for p in os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split() if p
+    ]
     if "face_enhancer" in processors:
         paths.append(models_dir / f"{_enhancer_model_name()}.onnx")
     return paths
@@ -108,6 +110,8 @@ def _ffmpeg_env() -> dict[str, str]:
     if extra:
         env["PATH"] = extra + os.pathsep + env.get("PATH", "")
     env["FACEFUSION_PYTHON"] = _facefusion_python()
+    for key in ("OMP_NUM_THREADS", "ORT_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):
+        env.setdefault(key, os.environ.get(key, "1"))
     return env
 
 
@@ -189,7 +193,12 @@ def _require_ffmpeg() -> None:
 
 
 def _build_swap_command(source_path: Path, target_path: Path, output_path: Path, work_dir: Path) -> list[str]:
-    processors = os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split()
+    processors = [
+        p for p in os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split() if p
+    ]
+    use_enhancer = "face_enhancer" in processors
+    if not processors:
+        processors = ["face_swapper"]
     swap_model = os.environ.get("FACEFUSION_SWAP_MODEL", "hyperswap_1a_256")
     pixel_boost = os.environ.get("FACEFUSION_PIXEL_BOOST", "512x512")
     swap_weight = os.environ.get("FACEFUSION_SWAP_WEIGHT", "0.85")
@@ -225,10 +234,6 @@ def _build_swap_command(source_path: Path, target_path: Path, output_path: Path,
         pixel_boost,
         "--face-swapper-weight",
         swap_weight,
-        "--face-enhancer-model",
-        enhancer,
-        "--face-enhancer-blend",
-        enhancer_blend,
         "--face-detector-model",
         "yolo_face",
         "--face-detector-score",
@@ -249,6 +254,16 @@ def _build_swap_command(source_path: Path, target_path: Path, output_path: Path,
 
     if execution_providers:
         cmd.extend(["--execution-providers", *execution_providers])
+
+    if use_enhancer:
+        cmd.extend(
+            [
+                "--face-enhancer-model",
+                enhancer,
+                "--face-enhancer-blend",
+                enhancer_blend,
+            ]
+        )
 
     return cmd
 
@@ -303,6 +318,9 @@ def perform_swap(source_bgr: np.ndarray, target_bgr: np.ndarray) -> np.ndarray:
 
         cmd = _build_swap_command(source_path, target_path, output_path, work_dir)
         timeout = int(os.environ.get("FACEFUSION_TIMEOUT_SEC", "600"))
+        print(f"[facefusion] swap start model={os.environ.get('FACEFUSION_SWAP_MODEL', 'hyperswap_1a_256')} "
+              f"boost={os.environ.get('FACEFUSION_PIXEL_BOOST', '512x512')} "
+              f"processors={os.environ.get('FACEFUSION_PROCESSORS', '')}", flush=True)
 
         proc = subprocess.run(
             cmd,
@@ -314,6 +332,9 @@ def perform_swap(source_bgr: np.ndarray, target_bgr: np.ndarray) -> np.ndarray:
         )
 
         if proc.returncode != 0:
+            err_tail = (proc.stderr or proc.stdout or "")[-3000:]
+            if err_tail:
+                print(f"[facefusion] failed (code {proc.returncode}):\n{err_tail}", flush=True)
             if proc.returncode in (-9, 137):
                 raise RuntimeError(
                     "Swap ran out of memory on the server. Try a smaller photo or upgrade "

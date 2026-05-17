@@ -126,16 +126,20 @@ def main() -> int:
         print(f"ERROR: failed downloading swap model {SWAP_MODEL}", file=sys.stderr)
         return 1
 
-    enh_set = face_enhancer_core.create_static_model_set("lite")
-    if ENHANCER_MODEL not in enh_set:
-        print(f"ERROR: unknown enhancer model {ENHANCER_MODEL}", file=sys.stderr)
-        return 1
-    # region agent log
-    _log("H4", "downloading face_enhancer model only", {"model": ENHANCER_MODEL})
-    # endregion
-    if not _download_model_set(enh_set, {ENHANCER_MODEL}):
-        print(f"ERROR: failed downloading enhancer {ENHANCER_MODEL}", file=sys.stderr)
-        return 1
+    processors = os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split()
+    if "face_enhancer" in processors:
+        enh_set = face_enhancer_core.create_static_model_set("lite")
+        if ENHANCER_MODEL not in enh_set:
+            print(f"ERROR: unknown enhancer model {ENHANCER_MODEL}", file=sys.stderr)
+            return 1
+        # region agent log
+        _log("H4", "downloading face_enhancer model only", {"model": ENHANCER_MODEL})
+        # endregion
+        if not _download_model_set(enh_set, {ENHANCER_MODEL}):
+            print(f"ERROR: failed downloading enhancer {ENHANCER_MODEL}", file=sys.stderr)
+            return 1
+    else:
+        print("[build] Skipping face_enhancer download (not in FACEFUSION_PROCESSORS)")
 
     required_files = [FACEFUSION_DIR / ".assets/models" / f"{SWAP_MODEL}.onnx"]
     if "face_enhancer" in os.environ.get("FACEFUSION_PROCESSORS", "face_swapper face_enhancer").split():

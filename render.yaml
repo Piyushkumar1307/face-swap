@@ -16,10 +16,18 @@ services:
         value: "1"
       - key: FACEFUSION_EXECUTION_PROVIDERS
         value: cpu
+      - key: FACEFUSION_PROCESSORS
+        value: face_swapper
+      - key: FACEFUSION_SWAP_MODEL
+        value: inswapper_128_fp16
       - key: FACEFUSION_PIXEL_BOOST
-        value: 256x256
+        value: 128x128
       - key: SWAP_MAX_EDGE
-        value: "1280"
+        value: "1024"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: ORT_NUM_THREADS
+        value: "1"
       - key: CLOUDINARY_CLOUD_NAME
         sync: false
       - key: CLOUDINARY_API_KEY
