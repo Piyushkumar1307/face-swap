@@ -8,10 +8,10 @@ import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from cloudinary_service import (
+    clear_all_templates,
     delete_template,
     is_configured,
     list_templates,
@@ -55,8 +55,26 @@ def _bootstrap_models() -> None:
         print("WARNING: FaceFusion model download failed or incomplete.")
 
 
+def _should_clear_templates_on_start() -> bool:
+    return os.getenv("CLEAR_TEMPLATES_ON_START", "true").lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+
+
 @app.on_event("startup")
-def check_facefusion():
+def on_startup():
+    if is_configured() and _should_clear_templates_on_start():
+        try:
+            removed = clear_all_templates()
+            if removed:
+                print(f"Cleared {removed} old template(s) from Cloudinary.")
+            else:
+                print("Templates folder is empty (no previous uploads).")
+        except Exception as exc:
+            print(f"WARNING: Could not clear templates on startup: {exc}")
+
     status = readiness_status()
     if is_facefusion_ready():
         print("FaceFusion ready.")
@@ -217,29 +235,34 @@ async def swap_face(
     }
 
 
+_INDEX_CACHE_HEADERS = {
+    "Cache-Control": "no-cache, no-store, must-revalidate",
+    "Pragma": "no-cache",
+}
+
+
 def _mount_frontend() -> None:
     index = STATIC_DIR / "index.html"
     if not index.is_file():
         print("No frontend build in static/ — API only (run scripts/build_frontend.sh).")
         return
 
-    assets_dir = STATIC_DIR / "assets"
-    if assets_dir.is_dir():
-        app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+    # Mount after all /api/* routes so API keeps precedence.
+    app.mount(
+        "/",
+        StaticFiles(directory=STATIC_DIR, html=True),
+        name="frontend",
+    )
 
-    @app.get("/", include_in_schema=False)
-    async def spa_index():
-        return FileResponse(index)
-
-    @app.get("/{spa_path:path}", include_in_schema=False)
-    async def spa_fallback(spa_path: str):
-        # API routes are registered above; this only serves static files + SPA fallback.
-        if spa_path.startswith("api/"):
-            raise HTTPException(status_code=404, detail="Not Found")
-        file_path = STATIC_DIR / spa_path
-        if file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(index)
+    @app.middleware("http")
+    async def no_cache_index_html(request, call_next):
+        response = await call_next(request)
+        path = request.url.path
+        if path in ("", "/") or (path.endswith(".html") and path != "/api/health"):
+            if response.headers.get("content-type", "").startswith("text/html"):
+                for key, value in _INDEX_CACHE_HEADERS.items():
+                    response.headers[key] = value
+        return response
 
     print(f"Serving UI from {STATIC_DIR}")
 

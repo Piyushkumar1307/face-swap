@@ -8,6 +8,7 @@ backend/outputs/
 backend/facefusion_work/
 backend/facefusion_jobs/
 backend/.env
+deploy/cloudflared/config.yml
 frontend/node_modules/
 frontend/dist/
 frontend/.env

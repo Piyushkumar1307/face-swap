@@ -48,6 +48,35 @@ def is_configured() -> bool:
     )
 
 
+def clear_all_templates() -> int:
+    """Remove every template in Cloudinary (fresh start on deploy)."""
+    if not is_configured():
+        return 0
+    _configure()
+    deleted = 0
+    next_cursor = None
+    prefix = f"{TEMPLATE_FOLDER}/"
+    while True:
+        kwargs: dict[str, Any] = {
+            "type": "upload",
+            "prefix": prefix,
+            "max_results": 100,
+        }
+        if next_cursor:
+            kwargs["next_cursor"] = next_cursor
+        response = cloudinary.api.resources(**kwargs)
+        ids = [item["public_id"] for item in response.get("resources", [])]
+        if ids:
+            result = cloudinary.api.delete_resources(ids, resource_type="image")
+            for status in result.get("deleted", {}).values():
+                if status == "deleted":
+                    deleted += 1
+        next_cursor = response.get("next_cursor")
+        if not next_cursor:
+            break
+    return deleted
+
+
 def list_templates() -> list[dict[str, Any]]:
     _configure()
     response = cloudinary.api.resources(
