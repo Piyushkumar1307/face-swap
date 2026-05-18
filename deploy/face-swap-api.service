@@ -1,0 +1,22 @@
+# systemd unit — run API on boot (Linux).
+# Install:
+#   sudo cp deploy/face-swap-api.service /etc/systemd/system/
+#   Edit User= and WorkingDirectory= below
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now face-swap-api
+
+[Unit]
+Description=Face Swap API (FastAPI + FaceFusion)
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_LINUX_USER
+WorkingDirectory=/path/to/face-swap-app
+Environment=PORT=8000
+ExecStart=/path/to/face-swap-app/deploy/start-production.sh
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
