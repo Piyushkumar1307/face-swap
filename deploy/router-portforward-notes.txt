@@ -1,0 +1,13 @@
+Alternative: Router port forwarding (no Cloudflare)
+================================================
+Use only if you understand the security risk of exposing your home IP.
+
+1. PC: run deploy\start-windows.bat (listens on 0.0.0.0:8000)
+2. Windows Firewall: allow inbound TCP port 8000
+3. Router admin (192.168.1.1): Port Forward external 8000 -> PC LAN IP port 8000
+4. Find public IP: https://ifconfig.me — access http://YOUR_PUBLIC_IP:8000
+5. Optional: free Dynamic DNS (No-IP, DuckDNS) if your IP changes
+
+Downsides: no HTTPS by default, home IP exposed, ISP may block port 80/443.
+
+Recommended instead: Cloudflare Tunnel (deploy\start-remote-windows.bat)
